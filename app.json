@@ -1,29 +1,44 @@
 {
   "expo": {
     "name": "Sabong",
-    "slug": "Sabong",
+    "slug": "sabong",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "icon": "./assets/sabong_favicon.png",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
+    "scheme": "sabong",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/sabong_favicon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#0A0A0A"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.yourname.sabong"
     },
     "android": {
+      "package": "com.yourname.sabong",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/sabong_favicon.png",
+        "backgroundColor": "#0A0A0A"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png"
-    }
+      "favicon": "./assets/sabong_favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-image-picker",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/sabong_favicon.png",
+          "color": "#D4AF37"
+        }
+      ]
+    ]
   }
 }

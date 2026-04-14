@@ -1,0 +1,45 @@
+export const COLORS = {
+  black: '#0A0A0A',
+  darkgray: '#111111',
+  gray: '#1A1A1A',
+  muted: '#2A2A2A',
+  border: '#333333',
+  darkred: '#7B0D0D',
+  red: '#B91C1C',
+  gold: '#D4AF37',
+  lightgold: '#F5D06A',
+  white: '#FFFFFF',
+  textmuted: '#888888',
+  textlight: '#CCCCCC',
+};
+
+export const BLOODLINES = [
+  'Sweater',
+  'Hatch',
+  'Kelso',
+  'Roundhead',
+  'Asil',
+  'Radio',
+  'Lemon 84',
+  'Claret',
+  'Grey',
+  'Butcher',
+  'Albany',
+  'Blueface',
+  'Other',
+];
+
+export const SYMPTOMS = [
+  'Lethargy',
+  'Loss of appetite',
+  'Abnormal droppings',
+  'Respiratory issues',
+  'Swollen joints',
+  'Eye discharge',
+  'Feather loss',
+  'Limping',
+  'Pale comb',
+  'Diarrhea',
+  'Vomiting',
+  'Weight loss',
+];
