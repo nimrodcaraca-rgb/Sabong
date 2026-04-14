@@ -33,7 +33,11 @@ export default function LoginScreen({ navigation }) {
   const handleGoogleLogin = async () => {
     try {
       setGoogleLoading(true);
-      const redirectUrl = AuthSession.makeRedirectUri({ useProxy: true });
+
+      const redirectUrl = AuthSession.makeRedirectUri({
+        scheme: 'sabong',
+        useProxy: true,
+      });
 
       const { data, error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -45,9 +49,14 @@ export default function LoginScreen({ navigation }) {
 
       if (error) throw error;
 
+      // Opens as modal overlay instead of jumping to Chrome
       const result = await WebBrowser.openAuthSessionAsync(
         data.url,
-        redirectUrl
+        redirectUrl,
+        {
+          showInRecents: false,
+          createTask: false,
+        }
       );
 
       if (result.type === 'success') {
@@ -57,9 +66,15 @@ export default function LoginScreen({ navigation }) {
         const refresh_token = params.get('refresh_token');
 
         if (access_token) {
-          await supabase.auth.setSession({ access_token, refresh_token });
+          const { error: sessionError } = await supabase.auth.setSession({
+            access_token,
+            refresh_token,
+          });
+          if (sessionError) throw sessionError;
         }
       }
+      // result.type === 'cancel' means user closed browser — do nothing
+
     } catch (err) {
       Alert.alert('Google Login Failed', err.message);
     } finally {
