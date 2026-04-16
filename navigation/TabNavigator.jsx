@@ -1,10 +1,10 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Text, View, Image } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context'; // ✅ add this
 import { COLORS } from '../constants/theme';
 import { Ionicons } from '@expo/vector-icons';
 
-// Screens
 import DashboardScreen from '../app/(tabs)/DashboardScreen';
 import RoostersScreen from '../app/(tabs)/RoostersScreen';
 import AddRoosterScreen from '../app/(tabs)/AddRoosterScreen';
@@ -13,10 +13,8 @@ import AnalyticsScreen from '../app/(tabs)/AnalyticsScreen';
 
 const Tab = createBottomTabNavigator();
 
-// 🔥 Reusable Tab Icon (Ionicons)
 const TabIcon = ({ label, iconName, focused }) => {
   const color = focused ? COLORS.gold : COLORS.textmuted;
-
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 8 }}>
       <Ionicons
@@ -24,16 +22,15 @@ const TabIcon = ({ label, iconName, focused }) => {
         size={24}
         color={color}
       />
-
       <Text
         numberOfLines={1}
         adjustsFontSizeToFit
         style={{
           fontSize: 10,
           marginTop: 4,
-          color: color,
+          color,
           fontWeight: focused ? '700' : '500',
-          width: 65, // ✅ prevent wrapping
+          maxWidth: 70,
           textAlign: 'center',
         }}
       >
@@ -43,31 +40,24 @@ const TabIcon = ({ label, iconName, focused }) => {
   );
 };
 
-// 🔥 Custom Rooster Icon using your image
 const RoosterIcon = ({ focused }) => {
   const color = focused ? COLORS.gold : COLORS.textmuted;
-
   return (
     <View style={{ alignItems: 'center', justifyContent: 'center', paddingTop: 8 }}>
       <Image
         source={require('../assets/sabong_favicon.png')}
-        style={{
-          width: 24,
-          height: 24,
-          tintColor: color, // 🔥 dynamic color like icons
-        }}
+        style={{ width: 24, height: 24, tintColor: color }}
         resizeMode="contain"
       />
-
       <Text
         numberOfLines={1}
         adjustsFontSizeToFit
         style={{
           fontSize: 10,
           marginTop: 4,
-          color: color,
+          color,
           fontWeight: focused ? '700' : '500',
-          width: 65,
+          maxWidth: 70,
           textAlign: 'center',
         }}
       >
@@ -78,6 +68,8 @@ const RoosterIcon = ({ focused }) => {
 };
 
 export default function TabNavigator() {
+  const insets = useSafeAreaInsets(); // ✅ get bottom inset
+
   return (
     <Tab.Navigator
       screenOptions={{
@@ -87,12 +79,11 @@ export default function TabNavigator() {
           backgroundColor: COLORS.darkgray,
           borderTopColor: COLORS.border,
           borderTopWidth: 1,
-          height: 85,
-          paddingBottom: 20,
+          height: 60 + insets.bottom, // ✅ dynamically adds space for nav bar
+          paddingBottom: insets.bottom, // ✅ pushes icons up above the buttons
         },
       }}
     >
-      {/* Home */}
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
@@ -102,8 +93,6 @@ export default function TabNavigator() {
           ),
         }}
       />
-
-      {/* 🐓 Roosters (your custom icon) */}
       <Tab.Screen
         name="Roosters"
         component={RoostersScreen}
@@ -111,48 +100,30 @@ export default function TabNavigator() {
           tabBarIcon: ({ focused }) => <RoosterIcon focused={focused} />,
         }}
       />
-
-      {/* Add */}
       <Tab.Screen
         name="AddRooster"
         component={AddRoosterScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Add"
-              iconName={focused ? 'add-circle' : 'add-circle'}
-              focused={focused}
-            />
+            <TabIcon label="Add" iconName="add-circle" focused={focused} />
           ),
         }}
       />
-
-      {/* Health */}
       <Tab.Screen
         name="Health"
         component={HealthScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Health"
-              iconName="medkit"
-              focused={focused}
-            />
+            <TabIcon label="Health" iconName="medkit" focused={focused} />
           ),
         }}
       />
-
-      {/* Analytics */}
       <Tab.Screen
         name="Analytics"
         component={AnalyticsScreen}
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon
-              label="Analytics"
-              iconName="stats-chart"
-              focused={focused}
-            />
+            <TabIcon label="Analytics" iconName="stats-chart" focused={focused} />
           ),
         }}
       />

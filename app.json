@@ -23,7 +23,10 @@
         "foregroundImage": "./assets/sabong_favicon.png",
         "backgroundColor": "#0A0A0A"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/sabong_favicon.png"
@@ -39,6 +42,11 @@
           "color": "#D4AF37"
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "0ccc0339-fdd1-4ec1-b81b-988a1b2348fe"
+      }
+    }
   }
 }
