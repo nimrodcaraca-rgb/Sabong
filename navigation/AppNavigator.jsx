@@ -6,6 +6,7 @@ import RoosterDetailScreen from '../app/rooster/RoosterDetailScreen';
 import MeasurementLogScreen from '../app/rooster/MeasurementLogScreen';
 import FightRecordScreen from '../app/rooster/FightRecordScreen';
 import TrainingLogScreen from '../app/rooster/TrainingLogScreen';
+import HealthScreen from '../app/(tabs)/HealthScreen';
 
 const Stack = createStackNavigator();
 
@@ -42,6 +43,11 @@ export default function AppNavigator() {
         name="TrainingLog"
         component={TrainingLogScreen}
         options={{ title: 'Training Log' }}
+      />
+      <Stack.Screen
+        name="HealthLog"
+        component={HealthScreen}
+        options={{ title: 'Health Log' }}
       />
     </Stack.Navigator>
   );

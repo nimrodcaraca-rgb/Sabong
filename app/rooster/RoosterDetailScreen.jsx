@@ -145,7 +145,7 @@ export default function RoosterDetailScreen({ route, navigation }) {
           <ActionBtn icon="🏃" label="Training Log"
             onPress={() => navigation.navigate('TrainingLog', { roosterId })} />
           <ActionBtn icon="💊" label="Health Log"
-            onPress={() => navigation.navigate('Health', { roosterId })} />
+            onPress={() => navigation.navigate('HealthLog', { preselectedRoosterId: roosterId })}/>
         </View>
       </View>
 
