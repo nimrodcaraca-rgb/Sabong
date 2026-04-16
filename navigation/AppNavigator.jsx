@@ -7,7 +7,7 @@ import MeasurementLogScreen from '../app/rooster/MeasurementLogScreen';
 import FightRecordScreen from '../app/rooster/FightRecordScreen';
 import TrainingLogScreen from '../app/rooster/TrainingLogScreen';
 import HealthScreen from '../app/(tabs)/HealthScreen';
-
+import ProfileScreen from '../app/ProfileScreen';
 const Stack = createStackNavigator();
 
 export default function AppNavigator() {
@@ -48,6 +48,11 @@ export default function AppNavigator() {
         name="HealthLog"
         component={HealthScreen}
         options={{ title: 'Health Log' }}
+      />
+      <Stack.Screen
+        name="Profile"
+        component={ProfileScreen}
+        options={{ title: 'Profile & Settings' }}
       />
     </Stack.Navigator>
   );

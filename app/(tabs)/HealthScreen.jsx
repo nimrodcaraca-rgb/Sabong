@@ -8,6 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useRoosters } from '../../hooks/useRoosters';
+import { useNotifications } from '../../hooks/useNotifications'; // ✅ added
 import { COLORS, SYMPTOMS } from '../../constants/theme';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
@@ -256,7 +257,8 @@ function SymptomForm({ roosters, preselectedRoosterId, onSaved, onCancel }) {
 }
 
 // ─── Vaccination form ─────────────────────────────────────────────────────────
-function AddVaccinationForm({ roosters, onSaved }) {
+// ✅ accepts scheduleReminder as prop
+function AddVaccinationForm({ roosters, onSaved, scheduleReminder }) {
   const [show, setShow] = useState(false);
   const [roosterId, setRoosterId] = useState(null);
   const [name, setName] = useState('');
@@ -268,15 +270,24 @@ function AddVaccinationForm({ roosters, onSaved }) {
     setShow(false); setRoosterId(null); setName('');
     setDateGiven(''); setNextDue(''); setAdminBy('');
   };
+
   const save = async () => {
     if (!roosterId || !name || !dateGiven) {
-      Alert.alert('Required', 'Rooster, vaccine name, and date are required.'); return;
+      Alert.alert('Required', 'Rooster, vaccine name, and date are required.');
+      return;
     }
     const { error } = await supabase.from('vaccination_records').insert({
       rooster_id: roosterId, vaccine_name: name, date_given: dateGiven,
       next_due_date: nextDue || null, administered_by: adminBy || null,
     });
     if (error) { Alert.alert('Error', error.message); return; }
+
+    // ✅ Schedule reminder if next due date exists
+    if (nextDue && scheduleReminder) {
+      const rooster = roosters.find(r => r.id === roosterId);
+      if (rooster) await scheduleReminder(rooster.name, name, nextDue);
+    }
+
     Alert.alert('Saved', 'Vaccination recorded.');
     reset(); onSaved();
   };
@@ -297,7 +308,8 @@ function AddVaccinationForm({ roosters, onSaved }) {
 }
 
 // ─── Vet visit form ───────────────────────────────────────────────────────────
-function AddVetVisitForm({ roosters, onSaved }) {
+// ✅ accepts scheduleReminder as prop
+function AddVetVisitForm({ roosters, onSaved, scheduleReminder }) {
   const [show, setShow] = useState(false);
   const [roosterId, setRoosterId] = useState(null);
   const [visitDate, setVisitDate] = useState('');
@@ -311,9 +323,11 @@ function AddVetVisitForm({ roosters, onSaved }) {
     setShow(false); setRoosterId(null); setVisitDate(''); setVetName('');
     setReason(''); setDiagnosis(''); setTreatment(''); setNextVisit('');
   };
+
   const save = async () => {
     if (!roosterId || !visitDate) {
-      Alert.alert('Required', 'Rooster and visit date are required.'); return;
+      Alert.alert('Required', 'Rooster and visit date are required.');
+      return;
     }
     const { error } = await supabase.from('vet_visits').insert({
       rooster_id: roosterId, visit_date: visitDate, vet_name: vetName || null,
@@ -321,6 +335,13 @@ function AddVetVisitForm({ roosters, onSaved }) {
       treatment: treatment || null, next_visit_date: nextVisit || null,
     });
     if (error) { Alert.alert('Error', error.message); return; }
+
+    // ✅ Schedule reminder if next visit date exists
+    if (nextVisit && scheduleReminder) {
+      const rooster = roosters.find(r => r.id === roosterId);
+      if (rooster) await scheduleReminder(rooster.name, nextVisit);
+    }
+
     Alert.alert('Saved', 'Vet visit recorded.');
     reset(); onSaved();
   };
@@ -418,6 +439,8 @@ const TABS = [
 export default function HealthScreen({ route }) {
   const { user } = useAuth();
   const { roosters, fetchRoosters } = useRoosters();
+  // ✅ pull both schedulers from the hook at the top level
+  const { scheduleVaccinationReminder, scheduleVetReminder } = useNotifications();
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('symptoms');
   const [recentLogs, setRecentLogs] = useState([]);
@@ -554,7 +577,12 @@ export default function HealthScreen({ route }) {
 
           {activeTab === 'vaccinations' && (
             <>
-              <AddVaccinationForm roosters={roosters} onSaved={fetchHealthData} />
+              {/* ✅ scheduleVaccinationReminder passed as prop */}
+              <AddVaccinationForm
+                roosters={roosters}
+                onSaved={fetchHealthData}
+                scheduleReminder={scheduleVaccinationReminder}
+              />
               {vaccinations.length === 0
                 ? <EmptyState text="No vaccination records yet." />
                 : <>
@@ -581,7 +609,12 @@ export default function HealthScreen({ route }) {
 
           {activeTab === 'vet' && (
             <>
-              <AddVetVisitForm roosters={roosters} onSaved={fetchHealthData} />
+              {/* ✅ scheduleVetReminder passed as prop */}
+              <AddVetVisitForm
+                roosters={roosters}
+                onSaved={fetchHealthData}
+                scheduleReminder={scheduleVetReminder}
+              />
               {vetVisits.length === 0
                 ? <EmptyState text="No vet visits recorded yet." />
                 : <>
@@ -711,7 +744,6 @@ const s = StyleSheet.create({
   scroll: { flex: 1 },
   content: { padding: 14 },
 
-  // Section header
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -897,7 +929,6 @@ const s = StyleSheet.create({
   inputMulti: {
     minHeight: 90,
     paddingTop: 11,
-    // Extra bottom padding so keyboard doesn't obscure text
     paddingBottom: 16,
   },
 

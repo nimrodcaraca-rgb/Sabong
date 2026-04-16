@@ -64,8 +64,11 @@ export default function DashboardScreen({ navigation }) {
             {user?.user_metadata?.full_name?.split(' ')[0] || 'Manok Master'}
           </Text>
         </View>
-        <TouchableOpacity onPress={signOut} style={styles.signOutBtn}>
-          <Feather name="log-out" size={17} color={COLORS.textmuted} />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('Profile')}
+          style={styles.signOutBtn}
+        >
+          <AntDesign name="user" size={20} color={COLORS.textmuted} />
         </TouchableOpacity>
       </View>
 
