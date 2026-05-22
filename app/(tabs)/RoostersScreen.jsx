@@ -146,6 +146,12 @@ export default function RoostersScreen({ navigation }) {
               <View style={styles.cardInfo}>
                 <View style={styles.cardNameRow}>
                   <Text style={styles.cardName}>{item.name}</Text>
+                  {item.is_pending && (
+                    <View style={styles.pendingBadge}>
+                      <Ionicons name="cloud-offline-outline" size={10} color={COLORS.gold} />
+                      <Text style={styles.pendingText}>Pending</Text>
+                    </View>
+                  )}
                   {item.pens?.name && (
                     <View style={styles.penBadge}>
                       <Text style={styles.penText}>{item.pens.name}</Text>
@@ -279,6 +285,18 @@ const styles = StyleSheet.create({
     color: COLORS.white,
     letterSpacing: -0.2,
   },
+  pendingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(212,175,55,0.4)',
+    backgroundColor: 'rgba(212,175,55,0.12)',
+  },
+  pendingText: { fontSize: 9, color: COLORS.gold, fontWeight: '800', letterSpacing: 0.3 },
   penBadge: {
     backgroundColor: COLORS.darkred,
     borderRadius: 5,

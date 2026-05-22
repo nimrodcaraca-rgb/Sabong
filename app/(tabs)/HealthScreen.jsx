@@ -10,6 +10,10 @@ import { useAuth } from '../../context/AuthContext';
 import { useRoosters } from '../../hooks/useRoosters';
 import { useNotifications } from '../../hooks/useNotifications'; // ✅ added
 import { COLORS, SYMPTOMS } from '../../constants/theme';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, getCache, setCache, updateCacheArray, updateCachedItem } from '../../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
 
 // ─── Design tokens ────────────────────────────────────────────────────────────
 const T = {
@@ -53,7 +57,14 @@ function RoosterSelector({ roosters, selectedId, onSelect }) {
             onPress={() => onSelect(r.id)}
             activeOpacity={0.75}
           >
-            <Text style={[s.chipText, active && s.chipTextActive]}>🐓 {r.name}</Text>
+            <View style={s.chipRow}>
+              <Ionicons
+                name="egg-outline"
+                size={12}
+                color={active ? T.gold : T.sub}
+              />
+              <Text style={[s.chipText, active && s.chipTextActive]}>{r.name}</Text>
+            </View>
           </TouchableOpacity>
         );
       })}
@@ -148,13 +159,13 @@ function SectionHeader({ label, count }) {
 }
 
 // ─── Log card ─────────────────────────────────────────────────────────────────
-function LogCard({ icon, name, dateLabel, relDate, sub, dueLabel, dueDate, children }) {
+function LogCard({ iconName, name, dateLabel, relDate, sub, dueLabel, dueDate, children }) {
   return (
     <View style={s.card}>
       <View style={s.cardHeader}>
         <View style={s.cardLeft}>
           <View style={s.cardIconWrap}>
-            <Text style={{ fontSize: 14 }}>{icon}</Text>
+            <Ionicons name={iconName} size={14} color={T.sub} />
           </View>
           <View style={{ flex: 1 }}>
             <Text style={s.cardName} numberOfLines={1}>{name}</Text>
@@ -196,7 +207,7 @@ function EmptyState({ text }) {
 }
 
 // ─── Symptom form ─────────────────────────────────────────────────────────────
-function SymptomForm({ roosters, preselectedRoosterId, onSaved, onCancel }) {
+function SymptomForm({ roosters, preselectedRoosterId, onSaved, onCancel, isOnline, userId }) {
   const [roosterId, setRoosterId] = useState(preselectedRoosterId ?? null);
   const [selected, setSelected] = useState([]);
   const [notes, setNotes] = useState('');
@@ -208,12 +219,38 @@ function SymptomForm({ roosters, preselectedRoosterId, onSaved, onCancel }) {
   const save = async () => {
     if (!roosterId) { Alert.alert('Required', 'Please select a rooster.'); return; }
     if (!selected.length) { Alert.alert('Required', 'Select at least one symptom.'); return; }
-    const { error } = await supabase.from('health_logs').insert({
+    const payload = {
       rooster_id: roosterId,
       logged_at: new Date().toISOString().split('T')[0],
       symptoms: selected,
       notes: notes.trim() || null,
-    });
+    };
+
+    if (!isOnline) {
+      const roosterName = roosters.find(r => r.id === roosterId)?.name || 'Unknown';
+      await enqueueItem(createQueueItem('health:create', payload));
+      await updateCacheArray(cacheKeys.healthLogs(userId), (items) => [
+        { ...payload, roosters: { name: roosterName } },
+        ...items,
+      ]);
+      await updateCachedItem(
+        cacheKeys.roosters(userId),
+        (r) => r.id === roosterId,
+        (r) => ({
+          ...r,
+          health_logs: [...(r.health_logs || []), {
+            logged_at: payload.logged_at,
+            symptoms: payload.symptoms,
+            notes: payload.notes,
+          }],
+        })
+      );
+      Alert.alert('Saved Offline', 'Health log will sync when online.');
+      onSaved(); onCancel();
+      return;
+    }
+
+    const { error } = await supabase.from('health_logs').insert(payload);
     if (error) { Alert.alert('Error', error.message); return; }
     Alert.alert('Saved', 'Health log recorded.');
     onSaved(); onCancel();
@@ -258,7 +295,7 @@ function SymptomForm({ roosters, preselectedRoosterId, onSaved, onCancel }) {
 
 // ─── Vaccination form ─────────────────────────────────────────────────────────
 // ✅ accepts scheduleReminder as prop
-function AddVaccinationForm({ roosters, onSaved, scheduleReminder }) {
+function AddVaccinationForm({ roosters, onSaved, scheduleReminder, isOnline, userId }) {
   const [show, setShow] = useState(false);
   const [roosterId, setRoosterId] = useState(null);
   const [name, setName] = useState('');
@@ -276,10 +313,33 @@ function AddVaccinationForm({ roosters, onSaved, scheduleReminder }) {
       Alert.alert('Required', 'Rooster, vaccine name, and date are required.');
       return;
     }
-    const { error } = await supabase.from('vaccination_records').insert({
-      rooster_id: roosterId, vaccine_name: name, date_given: dateGiven,
-      next_due_date: nextDue || null, administered_by: adminBy || null,
-    });
+    const payload = {
+      rooster_id: roosterId,
+      vaccine_name: name,
+      date_given: dateGiven,
+      next_due_date: nextDue || null,
+      administered_by: adminBy || null,
+    };
+
+    if (!isOnline) {
+      const roosterName = roosters.find(r => r.id === roosterId)?.name || 'Unknown';
+      await enqueueItem(createQueueItem('vaccination:create', payload));
+      await updateCacheArray(cacheKeys.vaccinations(userId), (items) => [
+        { ...payload, roosters: { name: roosterName } },
+        ...items,
+      ]);
+
+      if (nextDue && scheduleReminder) {
+        const rooster = roosters.find(r => r.id === roosterId);
+        if (rooster) await scheduleReminder(rooster.name, name, nextDue);
+      }
+
+      Alert.alert('Saved Offline', 'Vaccination will sync when online.');
+      reset(); onSaved();
+      return;
+    }
+
+    const { error } = await supabase.from('vaccination_records').insert(payload);
     if (error) { Alert.alert('Error', error.message); return; }
 
     // ✅ Schedule reminder if next due date exists
@@ -309,7 +369,7 @@ function AddVaccinationForm({ roosters, onSaved, scheduleReminder }) {
 
 // ─── Vet visit form ───────────────────────────────────────────────────────────
 // ✅ accepts scheduleReminder as prop
-function AddVetVisitForm({ roosters, onSaved, scheduleReminder }) {
+function AddVetVisitForm({ roosters, onSaved, scheduleReminder, isOnline, userId }) {
   const [show, setShow] = useState(false);
   const [roosterId, setRoosterId] = useState(null);
   const [visitDate, setVisitDate] = useState('');
@@ -329,11 +389,35 @@ function AddVetVisitForm({ roosters, onSaved, scheduleReminder }) {
       Alert.alert('Required', 'Rooster and visit date are required.');
       return;
     }
-    const { error } = await supabase.from('vet_visits').insert({
-      rooster_id: roosterId, visit_date: visitDate, vet_name: vetName || null,
-      reason: reason || null, diagnosis: diagnosis || null,
-      treatment: treatment || null, next_visit_date: nextVisit || null,
-    });
+    const payload = {
+      rooster_id: roosterId,
+      visit_date: visitDate,
+      vet_name: vetName || null,
+      reason: reason || null,
+      diagnosis: diagnosis || null,
+      treatment: treatment || null,
+      next_visit_date: nextVisit || null,
+    };
+
+    if (!isOnline) {
+      const roosterName = roosters.find(r => r.id === roosterId)?.name || 'Unknown';
+      await enqueueItem(createQueueItem('vet:create', payload));
+      await updateCacheArray(cacheKeys.vetVisits(userId), (items) => [
+        { ...payload, roosters: { name: roosterName } },
+        ...items,
+      ]);
+
+      if (nextVisit && scheduleReminder) {
+        const rooster = roosters.find(r => r.id === roosterId);
+        if (rooster) await scheduleReminder(rooster.name, nextVisit);
+      }
+
+      Alert.alert('Saved Offline', 'Vet visit will sync when online.');
+      reset(); onSaved();
+      return;
+    }
+
+    const { error } = await supabase.from('vet_visits').insert(payload);
     if (error) { Alert.alert('Error', error.message); return; }
 
     // ✅ Schedule reminder if next visit date exists
@@ -366,7 +450,7 @@ function AddVetVisitForm({ roosters, onSaved, scheduleReminder }) {
 }
 
 // ─── Feeding form ─────────────────────────────────────────────────────────────
-function AddFeedingForm({ roosters, onSaved }) {
+function AddFeedingForm({ roosters, onSaved, isOnline, userId }) {
   const [show, setShow] = useState(false);
   const [roosterId, setRoosterId] = useState(null);
   const [feedType, setFeedType] = useState('');
@@ -380,14 +464,28 @@ function AddFeedingForm({ roosters, onSaved }) {
   };
   const save = async () => {
     if (!roosterId) { Alert.alert('Required', 'Please select a rooster.'); return; }
-    const { error } = await supabase.from('feeding_logs').insert({
+    const payload = {
       rooster_id: roosterId,
       logged_at: new Date().toISOString().split('T')[0],
       feed_type: feedType || null,
       amount_grams: amount ? parseFloat(amount) : null,
       supplements: supplements ? supplements.split(',').map(x => x.trim()).filter(Boolean) : [],
       notes: notes.trim() || null,
-    });
+    };
+
+    if (!isOnline) {
+      const roosterName = roosters.find(r => r.id === roosterId)?.name || 'Unknown';
+      await enqueueItem(createQueueItem('feeding:create', payload));
+      await updateCacheArray(cacheKeys.feedingLogs(userId), (items) => [
+        { ...payload, roosters: { name: roosterName } },
+        ...items,
+      ]);
+      Alert.alert('Saved Offline', 'Feeding log will sync when online.');
+      reset(); onSaved();
+      return;
+    }
+
+    const { error } = await supabase.from('feeding_logs').insert(payload);
     if (error) { Alert.alert('Error', error.message); return; }
     Alert.alert('Saved', 'Feeding log recorded.');
     reset(); onSaved();
@@ -438,6 +536,7 @@ const TABS = [
 
 export default function HealthScreen({ route }) {
   const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const { roosters, fetchRoosters } = useRoosters();
   // ✅ pull both schedulers from the hook at the top level
   const { scheduleVaccinationReminder, scheduleVetReminder } = useNotifications();
@@ -455,6 +554,20 @@ export default function HealthScreen({ route }) {
     setLoading(true);
     const ids = roosters.map(r => r.id);
     try {
+      if (!isOnline) {
+        const [hc, vc, vtc, fc] = await Promise.all([
+          getCache(cacheKeys.healthLogs(user.id)),
+          getCache(cacheKeys.vaccinations(user.id)),
+          getCache(cacheKeys.vetVisits(user.id)),
+          getCache(cacheKeys.feedingLogs(user.id)),
+        ]);
+        setRecentLogs(hc.data || []);
+        setVaccinations(vc.data || []);
+        setVetVisits(vtc.data || []);
+        setFeedingLogs(fc.data || []);
+        return;
+      }
+
       const [{ data: hd }, { data: vd }, { data: vtd }, { data: fd }] = await Promise.all([
         supabase.from('health_logs').select('*, roosters(name)')
           .in('rooster_id', ids).order('logged_at', { ascending: false }).limit(20),
@@ -469,11 +582,16 @@ export default function HealthScreen({ route }) {
       setVaccinations(vd || []);
       setVetVisits(vtd || []);
       setFeedingLogs(fd || []);
+      await setCache(cacheKeys.healthLogs(user.id), hd || []);
+      await setCache(cacheKeys.vaccinations(user.id), vd || []);
+      await setCache(cacheKeys.vetVisits(user.id), vtd || []);
+      await setCache(cacheKeys.feedingLogs(user.id), fd || []);
     } catch (err) {
       console.error('fetchHealthData:', err);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [user, roosters]);
+  }, [isOnline, roosters, user]);
 
   useFocusEffect(useCallback(() => { fetchRoosters(); }, [user]));
   useFocusEffect(useCallback(() => { fetchHealthData(); }, [fetchHealthData]));
@@ -541,6 +659,8 @@ export default function HealthScreen({ route }) {
                   roosters={roosters}
                   preselectedRoosterId={preselectedRoosterId}
                   onSaved={fetchHealthData}
+                  isOnline={isOnline}
+                  userId={user?.id}
                   onCancel={() => {
                     setShowSymptomForm(false);
                     setPreselectedRoosterId(null);
@@ -555,7 +675,7 @@ export default function HealthScreen({ route }) {
                         {recentLogs.map(log => (
                           <LogCard
                             key={log.id}
-                            icon="🐓"
+                            iconName="heart-outline"
                             name={log.roosters?.name}
                             dateLabel={fmtDate(log.logged_at)}
                             relDate={relDate(log.logged_at)}
@@ -582,6 +702,8 @@ export default function HealthScreen({ route }) {
                 roosters={roosters}
                 onSaved={fetchHealthData}
                 scheduleReminder={scheduleVaccinationReminder}
+                isOnline={isOnline}
+                userId={user?.id}
               />
               {vaccinations.length === 0
                 ? <EmptyState text="No vaccination records yet." />
@@ -590,7 +712,7 @@ export default function HealthScreen({ route }) {
                     {vaccinations.map(v => (
                       <LogCard
                         key={v.id}
-                        icon="🐓"
+                        iconName="shield-checkmark-outline"
                         name={v.vaccine_name}
                         dateLabel={fmtDate(v.date_given)}
                         sub={v.roosters?.name}
@@ -614,6 +736,8 @@ export default function HealthScreen({ route }) {
                 roosters={roosters}
                 onSaved={fetchHealthData}
                 scheduleReminder={scheduleVetReminder}
+                isOnline={isOnline}
+                userId={user?.id}
               />
               {vetVisits.length === 0
                 ? <EmptyState text="No vet visits recorded yet." />
@@ -622,7 +746,7 @@ export default function HealthScreen({ route }) {
                     {vetVisits.map(v => (
                       <LogCard
                         key={v.id}
-                        icon="🐓"
+                        iconName="medkit-outline"
                         name={v.reason || 'Vet Visit'}
                         dateLabel={fmtDate(v.visit_date)}
                         sub={v.roosters?.name}
@@ -647,7 +771,12 @@ export default function HealthScreen({ route }) {
 
           {activeTab === 'feeding' && (
             <>
-              <AddFeedingForm roosters={roosters} onSaved={fetchHealthData} />
+              <AddFeedingForm
+                roosters={roosters}
+                onSaved={fetchHealthData}
+                isOnline={isOnline}
+                userId={user?.id}
+              />
               {feedingLogs.length === 0
                 ? <EmptyState text="No feeding logs yet." />
                 : <>
@@ -655,7 +784,7 @@ export default function HealthScreen({ route }) {
                     {feedingLogs.map(f => (
                       <LogCard
                         key={f.id}
-                        icon="🐓"
+                        iconName="nutrition-outline"
                         name={f.feed_type || 'Feeding Log'}
                         dateLabel={fmtDate(f.logged_at)}
                         sub={f.roosters?.name}
@@ -875,6 +1004,7 @@ const s = StyleSheet.create({
     borderWidth: 1,
     borderColor: T.border2,
   },
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   chipActive: { backgroundColor: T.gold, borderColor: T.gold },
   chipText: { color: T.sub, fontWeight: '600', fontSize: 13 },
   chipTextActive: { color: '#0A0A0B', fontWeight: '800' },

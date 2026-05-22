@@ -6,9 +6,15 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, updateCachedItem, updateCacheArray } from '../../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
 
 export default function MeasurementLogScreen({ route, navigation }) {
   const { roosterId } = route.params;
+  const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [loggedAt, setLoggedAt] = useState(new Date());
   const [showDate, setShowDate] = useState(false);
@@ -24,7 +30,7 @@ export default function MeasurementLogScreen({ route, navigation }) {
   const handleSave = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase.from('measurement_logs').insert({
+      const payload = {
         rooster_id: roosterId,
         logged_at: loggedAt.toISOString().split('T')[0],
         weight_kg: weight ? parseFloat(weight) : null,
@@ -35,15 +41,43 @@ export default function MeasurementLogScreen({ route, navigation }) {
         body_condition_score: bodyScore ? parseInt(bodyScore) : null,
         feather_condition: featherCondition || null,
         notes: notes.trim() || null,
-      });
+      };
+
+      if (!isOnline) {
+        await enqueueItem(createQueueItem('measurement:create', payload));
+        if (user) {
+          await updateCachedItem(
+            cacheKeys.roosters(user.id),
+            (r) => r.id === roosterId,
+            (r) => ({
+              ...r,
+              measurement_logs: [...(r.measurement_logs || []), {
+                weight_kg: payload.weight_kg,
+                logged_at: payload.logged_at,
+              }],
+            })
+          );
+        }
+        await updateCacheArray(cacheKeys.measurements(roosterId), (items) => [...items, payload]);
+
+        Alert.alert('Saved Offline', 'Measurements will sync when online.', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+        return;
+      }
+
+      const { error } = await supabase.from('measurement_logs').insert(payload);
       if (error) throw error;
-      Alert.alert('Saved! 📏', 'Measurements logged successfully.', [
+      await updateCacheArray(cacheKeys.measurements(roosterId), (items) => [...items, payload]);
+
+      Alert.alert('Saved', 'Measurements logged successfully.', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (

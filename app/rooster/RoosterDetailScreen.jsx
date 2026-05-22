@@ -6,14 +6,28 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, getCache, updateCacheArray } from '../../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function RoosterDetailScreen({ route, navigation }) {
   const { roosterId } = route.params;
+  const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [rooster, setRooster] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const fetchRooster = async () => {
     setLoading(true);
+    if (!isOnline && user) {
+      const cached = await getCache(cacheKeys.roosters(user.id));
+      const found = (cached.data || []).find(r => r.id === roosterId);
+      if (found) setRooster(found);
+      setLoading(false);
+      return;
+    }
     const { data, error } = await supabase
       .from('roosters')
       .select(`
@@ -40,6 +54,17 @@ export default function RoosterDetailScreen({ route, navigation }) {
       {
         text: 'Remove', style: 'destructive',
         onPress: async () => {
+          if (!isOnline && user) {
+            await enqueueItem(createQueueItem('rooster:update', {
+              id: roosterId,
+              updates: { is_active: false },
+            }));
+            await updateCacheArray(cacheKeys.roosters(user.id), (items) =>
+              items.filter(r => r.id !== roosterId)
+            );
+            navigation.goBack();
+            return;
+          }
           await supabase.from('roosters').update({ is_active: false }).eq('id', roosterId);
           navigation.goBack();
         }
@@ -83,14 +108,15 @@ export default function RoosterDetailScreen({ route, navigation }) {
         <View style={styles.heroPhoto}>
           {rooster.photo_url
             ? <Image source={{ uri: rooster.photo_url }} style={styles.heroImg} />
-            : <Text style={{ fontSize: 64 }}>🐓</Text>
+            : <Ionicons name="egg-outline" size={64} color={COLORS.border} />
           }
         </View>
         <Text style={styles.heroName}>{rooster.name}</Text>
         <Text style={styles.heroBloodline}>{rooster.bloodline || 'Unknown Bloodline'}</Text>
         {rooster.pens && (
           <View style={styles.penChip}>
-            <Text style={styles.penChipText}>🏠 {rooster.pens.name}</Text>
+            <Ionicons name="home-outline" size={12} color={COLORS.white} />
+            <Text style={styles.penChipText}>{rooster.pens.name}</Text>
           </View>
         )}
       </View>
@@ -138,13 +164,13 @@ export default function RoosterDetailScreen({ route, navigation }) {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>ACTIONS</Text>
         <View style={styles.actionsGrid}>
-          <ActionBtn icon="📏" label="Log Measurements"
+          <ActionBtn iconName="scale-outline" label="Log Measurements"
             onPress={() => navigation.navigate('MeasurementLog', { roosterId })} />
-          <ActionBtn icon="⚔️" label="Add Fight Record"
+          <ActionBtn iconName="trophy-outline" label="Add Fight Record"
             onPress={() => navigation.navigate('FightRecord', { roosterId })} />
-          <ActionBtn icon="🏃" label="Training Log"
+          <ActionBtn iconName="barbell-outline" label="Training Log"
             onPress={() => navigation.navigate('TrainingLog', { roosterId })} />
-          <ActionBtn icon="💊" label="Health Log"
+          <ActionBtn iconName="medkit-outline" label="Health Log"
             onPress={() => navigation.navigate('HealthLog', { preselectedRoosterId: roosterId })}/>
         </View>
       </View>
@@ -207,9 +233,9 @@ const InfoRow = ({ label, value }) => (
   </View>
 );
 
-const ActionBtn = ({ icon, label, onPress }) => (
+const ActionBtn = ({ iconName, label, onPress }) => (
   <TouchableOpacity style={styles.actionBtn} onPress={onPress}>
-    <Text style={styles.actionIcon}>{icon}</Text>
+    <Ionicons name={iconName} size={22} color={COLORS.gold} />
     <Text style={styles.actionLabel}>{label}</Text>
   </TouchableOpacity>
 );
@@ -234,7 +260,8 @@ const styles = StyleSheet.create({
   heroBloodline: { fontSize: 14, color: COLORS.gold, marginTop: 4 },
   penChip: {
     backgroundColor: COLORS.darkred, borderRadius: 20,
-    paddingHorizontal: 14, paddingVertical: 6, marginTop: 10,
+    paddingHorizontal: 12, paddingVertical: 6, marginTop: 10,
+    flexDirection: 'row', alignItems: 'center', gap: 6,
   },
   penChipText: { color: COLORS.white, fontSize: 12, fontWeight: '700' },
   fightRow: {

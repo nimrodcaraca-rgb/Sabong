@@ -11,9 +11,14 @@ import { useAuth } from '../../context/AuthContext';
 import { usePens } from '../../hooks/usePens';
 import { COLORS, BLOODLINES } from '../../constants/theme';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, updateCacheArray } from '../../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
+import { uploadPhotoToSupabase } from '../../lib/uploadPhoto';
 
 export default function AddRoosterScreen({ navigation }) {
   const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const { pens, createPen } = usePens();
   const [loading, setLoading] = useState(false);
 
@@ -31,6 +36,16 @@ export default function AddRoosterScreen({ navigation }) {
   const [showNewPenForm, setShowNewPenForm] = useState(false);
   const [newPenName, setNewPenName] = useState('');
   const [newPenLocation, setNewPenLocation] = useState('');
+
+  const resetForm = () => {
+    setName('');
+    setBloodline('');
+    setBreeder('');
+    setPedigreeNotes('');
+    setBirthdate(null);
+    setPhoto(null);
+    setSelectedPen(null);
+  };
 
   const pickPhoto = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -50,31 +65,7 @@ export default function AddRoosterScreen({ navigation }) {
   const uploadPhoto = async () => {
     if (!photo) return null;
     try {
-      const fileExt = photo.split('.').pop().toLowerCase().split('?')[0];
-      const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-      const contentType = `image/${fileExt === 'jpg' ? 'jpeg' : fileExt}`;
-
-      const response = await fetch(photo);
-      const blob = await response.blob();
-
-      const arrayBuffer = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsArrayBuffer(blob);
-      });
-
-      const { error } = await supabase.storage
-        .from('rooster-photos')
-        .upload(fileName, arrayBuffer, { contentType, upsert: true });
-
-      if (error) throw error;
-
-      const { data: urlData } = supabase.storage
-        .from('rooster-photos')
-        .getPublicUrl(fileName);
-
-      return urlData.publicUrl;
+      return await uploadPhotoToSupabase(user.id, photo);
     } catch (err) {
       console.error('Upload error:', err);
       Alert.alert('Upload Failed', 'Could not upload photo. Please try again.');
@@ -106,27 +97,70 @@ export default function AddRoosterScreen({ navigation }) {
     }
     setLoading(true);
     try {
-      const photoUrl = await uploadPhoto();
-      const { error } = await supabase.from('roosters').insert({
-        user_id: user.id,
+      const payload = {
         pen_id: selectedPen?.id || null,
         name: name.trim(),
         bloodline: bloodline || null,
         birthdate: birthdate ? birthdate.toISOString().split('T')[0] : null,
         breeder: breeder.trim() || null,
         pedigree_notes: pedigreeNotes.trim() || null,
-        photo_url: photoUrl,
-        is_active: true,
-      });
+      };
+
+      if (!isOnline) {
+        const localId = `local-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        const pendingRooster = {
+          id: localId,
+          user_id: user.id,
+          ...payload,
+          photo_url: photo || null,
+          pens: selectedPen ? { id: selectedPen.id, name: selectedPen.name } : null,
+          fight_records: [],
+          measurement_logs: [],
+          health_logs: [],
+          is_active: true,
+          is_pending: true,
+        };
+
+        await enqueueItem(createQueueItem('rooster:create', {
+          localId,
+          ...payload,
+          photoLocalUri: photo || null,
+        }));
+        await updateCacheArray(cacheKeys.roosters(user.id), (items) => [pendingRooster, ...items]);
+
+        Alert.alert('Saved Offline', 'Rooster saved locally and will sync when online.', [
+          { text: 'OK', onPress: () => navigation.navigate('Roosters') }
+        ]);
+        resetForm();
+        return;
+      }
+
+      const photoUrl = await uploadPhoto();
+      const { data, error } = await supabase
+        .from('roosters')
+        .insert({
+          user_id: user.id,
+          ...payload,
+          photo_url: photoUrl,
+          is_active: true,
+        })
+        .select(`
+          *,
+          pens (id, name),
+          fight_records (result),
+          measurement_logs (weight_kg, logged_at),
+          health_logs (logged_at, symptoms, notes)
+        `)
+        .single();
       if (error) throw error;
+      await updateCacheArray(cacheKeys.roosters(user.id), (items) => [data, ...items]);
+
       Alert.alert('Rooster Added', `${name} has been added to your stable.`, [
         { text: 'View Roosters', onPress: () => navigation.navigate('Roosters') },
         {
           text: 'Add Another',
           onPress: () => {
-            setName(''); setBloodline(''); setBreeder('');
-            setPedigreeNotes(''); setBirthdate(null);
-            setPhoto(null); setSelectedPen(null);
+            resetForm();
           },
         },
       ]);

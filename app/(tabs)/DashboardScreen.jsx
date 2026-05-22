@@ -6,12 +6,14 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../../context/AuthContext';
 import { useRoosters } from '../../hooks/useRoosters';
+import { useOfflineSync } from '../../hooks/useOfflineSync';
 import { COLORS } from '../../constants/theme';
 import { AntDesign, Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 
 export default function DashboardScreen({ navigation }) {
   const { user, signOut } = useAuth();
   const { roosters, loading, fetchRoosters, getStats } = useRoosters();
+  const { runSync, syncing, pendingCount } = useOfflineSync(user);
   const stats = getStats();
 
   useFocusEffect(
@@ -64,12 +66,26 @@ export default function DashboardScreen({ navigation }) {
             {user?.user_metadata?.full_name?.split(' ')[0] || 'Manok Master'}
           </Text>
         </View>
-        <TouchableOpacity
-          onPress={() => navigation.navigate('Profile')}
-          style={styles.signOutBtn}
-        >
-          <AntDesign name="user" size={20} color={COLORS.textmuted} />
-        </TouchableOpacity>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            onPress={runSync}
+            style={[styles.syncBtn, syncing && { opacity: 0.6 }]}
+            disabled={syncing}
+          >
+            <Ionicons name="sync" size={18} color={COLORS.textmuted} />
+            {pendingCount > 0 && (
+              <View style={styles.syncBadge}>
+                <Text style={styles.syncBadgeText}>{pendingCount}</Text>
+              </View>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => navigation.navigate('Profile')}
+            style={styles.signOutBtn}
+          >
+            <AntDesign name="user" size={20} color={COLORS.textmuted} />
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* ── Stable Banner ── */}
@@ -116,7 +132,6 @@ export default function DashboardScreen({ navigation }) {
           label="Total Wins"
           value={stats.wins}
           icon={<Ionicons name="trophy-outline" size={20} color={COLORS.gold} />}
-          valueColor={COLORS.gold}
         />
         <StatCard
           label="Total Losses"
@@ -304,8 +319,32 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   headerLeft: { gap: 2 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   greeting: { fontSize: 12, color: COLORS.textmuted, letterSpacing: 1, textTransform: 'uppercase' },
   userName: { fontSize: 26, fontWeight: '900', color: COLORS.white, letterSpacing: -0.5 },
+  syncBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    backgroundColor: COLORS.gray,
+  },
+  syncBadge: {
+    position: 'absolute',
+    right: -4,
+    top: -4,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    backgroundColor: COLORS.gold,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 3,
+  },
+  syncBadgeText: { color: COLORS.black, fontSize: 10, fontWeight: '800' },
   signOutBtn: {
     backgroundColor: COLORS.darkgray,
     padding: 10,

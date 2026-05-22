@@ -6,9 +6,13 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../../constants/theme';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TrainingLogScreen({ route, navigation }) {
   const { roosterId } = route.params;
+  const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [loggedAt, setLoggedAt] = useState(new Date());
   const [showDate, setShowDate] = useState(false);
@@ -21,22 +25,33 @@ export default function TrainingLogScreen({ route, navigation }) {
     if (!sessionType) { Alert.alert('Required', 'Please select a session type.'); return; }
     setLoading(true);
     try {
-      const { error } = await supabase.from('training_logs').insert({
+      const payload = {
         rooster_id: roosterId,
         logged_at: loggedAt.toISOString().split('T')[0],
         session_type: sessionType,
         intensity: intensity || null,
         duration_minutes: duration ? parseInt(duration) : null,
         notes: notes.trim() || null,
-      });
+      };
+
+      if (!isOnline) {
+        await enqueueItem(createQueueItem('training:create', payload));
+        Alert.alert('Saved Offline', 'Training log will sync when online.', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+        return;
+      }
+
+      const { error } = await supabase.from('training_logs').insert(payload);
       if (error) throw error;
-      Alert.alert('Saved! 🏃', 'Training session logged.', [
+      Alert.alert('Saved', 'Training session logged.', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -57,17 +72,24 @@ export default function TrainingLogScreen({ route, navigation }) {
       <Text style={styles.sectionTitle}>SESSION TYPE</Text>
       <View style={styles.optionGrid}>
         {[
-          { label: '💪 Conditioning', value: 'Conditioning' },
-          { label: '🥊 Sparring', value: 'Sparring' },
-          { label: '😴 Rest', value: 'Rest' },
-          { label: '📋 Other', value: 'Other' },
-        ].map(({ label, value }) => (
+          { label: 'Conditioning', value: 'Conditioning', icon: 'barbell-outline' },
+          { label: 'Sparring', value: 'Sparring', icon: 'fitness-outline' },
+          { label: 'Rest', value: 'Rest', icon: 'bed-outline' },
+          { label: 'Other', value: 'Other', icon: 'list-outline' },
+        ].map(({ label, value, icon }) => (
           <TouchableOpacity key={value}
             style={[styles.optionBtn, sessionType === value && styles.optionBtnActive]}
             onPress={() => setSessionType(value)}>
-            <Text style={[styles.optionText, sessionType === value && styles.optionTextActive]}>
-              {label}
-            </Text>
+            <View style={styles.optionRow}>
+              <Ionicons
+                name={icon}
+                size={14}
+                color={sessionType === value ? COLORS.gold : COLORS.textlight}
+              />
+              <Text style={[styles.optionText, sessionType === value && styles.optionTextActive]}>
+                {label}
+              </Text>
+            </View>
           </TouchableOpacity>
         ))}
       </View>
@@ -103,7 +125,7 @@ export default function TrainingLogScreen({ route, navigation }) {
       <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.6 }]}
         onPress={handleSave} disabled={loading}>
         {loading ? <ActivityIndicator color={COLORS.black} />
-          : <Text style={styles.saveBtnText}>SAVE TRAINING LOG 🏃</Text>}
+          : <Text style={styles.saveBtnText}>SAVE TRAINING LOG</Text>}
       </TouchableOpacity>
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -132,6 +154,7 @@ const styles = StyleSheet.create({
     borderWidth: 1, borderColor: COLORS.border,
   },
   optionBtnActive: { backgroundColor: 'rgba(212,175,55,0.15)', borderColor: COLORS.gold },
+  optionRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   optionText: { color: COLORS.textlight, fontWeight: '700', fontSize: 13 },
   optionTextActive: { color: COLORS.gold },
   intensityRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },

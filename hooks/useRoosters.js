@@ -1,15 +1,46 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
+import { useNetworkStatus } from './useNetworkStatus';
+import { cacheKeys, getCache, setCache } from '../lib/offlineStore';
 
 export const useRoosters = () => {
   const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [roosters, setRoosters] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
+  const enrichRoosters = useCallback((data) => {
+    return (data || []).map((r) => {
+      const fights = r.fight_records || [];
+      const wins = fights.filter(f => f.result === 'Win').length;
+      const losses = fights.filter(f => f.result === 'Loss').length;
+      const draws = fights.filter(f => f.result === 'Draw').length;
+
+      const healthLogs = [...(r.health_logs || [])].sort(
+        (a, b) => new Date(b.logged_at) - new Date(a.logged_at)
+      );
+      const lastHealth = healthLogs[0] || null;
+
+      return { ...r, wins, losses, draws, lastHealth };
+    });
+  }, []);
+
+  const loadCached = useCallback(async () => {
+    if (!user) return;
+    const { data } = await getCache(cacheKeys.roosters(user.id));
+    if (data) setRoosters(enrichRoosters(data));
+    setLoading(false);
+  }, [enrichRoosters, user]);
+
   const fetchRoosters = useCallback(async () => {
     if (!user) return;
+    if (!isOnline) {
+      await loadCached();
+      setRefreshing(false);
+      return;
+    }
     try {
       const { data, error } = await supabase
         .from('roosters')
@@ -26,29 +57,15 @@ export const useRoosters = () => {
 
       if (error) throw error;
 
-      // Enrich each rooster with computed stats
-      const enriched = (data || []).map((r) => {
-        const fights = r.fight_records || [];
-        const wins = fights.filter(f => f.result === 'Win').length;
-        const losses = fights.filter(f => f.result === 'Loss').length;
-        const draws = fights.filter(f => f.result === 'Draw').length;
-
-        const healthLogs = [...(r.health_logs || [])].sort(
-          (a, b) => new Date(b.logged_at) - new Date(a.logged_at)
-        );
-        const lastHealth = healthLogs[0] || null;
-
-        return { ...r, wins, losses, draws, lastHealth };
-      });
-
-      setRoosters(enriched);
+      await setCache(cacheKeys.roosters(user.id), data || []);
+      setRoosters(enrichRoosters(data));
     } catch (err) {
       console.error('fetchRoosters error:', err.message);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [user]);
+  }, [enrichRoosters, isOnline, loadCached, user]);
 
   useEffect(() => { fetchRoosters(); }, [fetchRoosters]);
 

@@ -3,6 +3,7 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 import { supabase } from '../lib/supabase';
+import Constants from 'expo-constants';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -16,8 +17,10 @@ export const useNotifications = () => {
   const [expoPushToken, setExpoPushToken] = useState('');
   const notificationListener = useRef();
   const responseListener = useRef();
+  const isExpoGo = Constants.appOwnership === 'expo';
 
   const registerForPushNotifications = async () => {
+    if (isExpoGo) return null;
     if (!Device.isDevice) return null;
 
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -119,6 +122,7 @@ export const useNotifications = () => {
   };
 
   useEffect(() => {
+    if (isExpoGo) return;
     registerForPushNotifications();
 
     notificationListener.current =
@@ -135,7 +139,7 @@ export const useNotifications = () => {
         notificationListener.current?.remove();
         responseListener.current?.remove();
     };
-  }, []);
+  }, [isExpoGo]);
 
   return {
     expoPushToken,

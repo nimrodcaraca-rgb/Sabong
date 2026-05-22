@@ -36,9 +36,16 @@ export default function SignUpScreen({ navigation }) {
       Alert.alert('Sign Up Failed', error.message);
     } else {
       Alert.alert(
-        'Account Created! 🐓',
+        'Account Created',
         'Welcome to Sabong! Please check your email to verify your account, then sign in.',
-        [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        [{
+          text: 'OK',
+          onPress: () => {
+            if (navigation.canGoBack()) {
+              navigation.goBack();
+            }
+          }
+        }]
       );
     }
   };

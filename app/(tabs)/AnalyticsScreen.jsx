@@ -12,6 +12,9 @@ import {
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../context/AuthContext';
 import { useRoosters } from '../../hooks/useRoosters';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, getCache, setCache } from '../../lib/offlineStore';
+import { Ionicons } from '@expo/vector-icons';
 
 // ── Design Tokens ──────────────────────────────────────────────────────────────
 const T = {
@@ -38,6 +41,7 @@ const T = {
 // ── Screen ─────────────────────────────────────────────────────────────────────
 export default function AnalyticsScreen() {
   const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const { roosters, fetchRoosters, getStats } = useRoosters();
   const stats = getStats();
 
@@ -59,10 +63,49 @@ export default function AnalyticsScreen() {
     }
   }, [roosters]));
 
+  const applyChartData = (measurements, fights) => {
+    if (measurements?.length) {
+      setWeightData(measurements
+        .filter(m => m.weight_kg != null)
+        .map((m, i) => ({ x: i + 1, y: parseFloat(m.weight_kg) }))
+      );
+      setSpurData(measurements
+        .filter(m => m.spur_length_cm != null)
+        .map((m, i) => ({ x: i + 1, y: parseFloat(m.spur_length_cm) }))
+      );
+      setWingspanData(measurements
+        .filter(m => m.wingspan_cm != null)
+        .map((m, i) => ({ x: i + 1, y: parseFloat(m.wingspan_cm) }))
+      );
+    } else {
+      setWeightData([]); setSpurData([]); setWingspanData([]);
+    }
+
+    if (fights?.length) {
+      const w = fights.filter(f => f.result === 'Win').length;
+      const l = fights.filter(f => f.result === 'Loss').length;
+      const d = fights.filter(f => f.result === 'Draw').length;
+      setFightData([
+        { x: 'W', y: w },
+        { x: 'L', y: l },
+        { x: 'D', y: d },
+      ]);
+    } else {
+      setFightData([]);
+    }
+  };
+
   const fetchRoosterChartData = async (rooster) => {
     if (!rooster) return;
     setLoading(true);
     try {
+      if (!isOnline) {
+        const cachedMeasurements = await getCache(cacheKeys.measurements(rooster.id));
+        const cachedFights = await getCache(cacheKeys.fights(rooster.id));
+        applyChartData(cachedMeasurements.data || [], cachedFights.data || []);
+        return;
+      }
+
       const { data: measurements } = await supabase
         .from('measurement_logs')
         .select('logged_at, weight_kg, spur_length_cm, wingspan_cm')
@@ -75,35 +118,9 @@ export default function AnalyticsScreen() {
         .select('result')
         .eq('rooster_id', rooster.id);
 
-      if (measurements?.length) {
-        setWeightData(measurements
-          .filter(m => m.weight_kg != null)
-          .map((m, i) => ({ x: i + 1, y: parseFloat(m.weight_kg) }))
-        );
-        setSpurData(measurements
-          .filter(m => m.spur_length_cm != null)
-          .map((m, i) => ({ x: i + 1, y: parseFloat(m.spur_length_cm) }))
-        );
-        setWingspanData(measurements
-          .filter(m => m.wingspan_cm != null)
-          .map((m, i) => ({ x: i + 1, y: parseFloat(m.wingspan_cm) }))
-        );
-      } else {
-        setWeightData([]); setSpurData([]); setWingspanData([]);
-      }
-
-      if (fights?.length) {
-        const w = fights.filter(f => f.result === 'Win').length;
-        const l = fights.filter(f => f.result === 'Loss').length;
-        const d = fights.filter(f => f.result === 'Draw').length;
-        setFightData([
-          { x: 'W', y: w },
-          { x: 'L', y: l },
-          { x: 'D', y: d },
-        ]);
-      } else {
-        setFightData([]);
-      }
+      await setCache(cacheKeys.measurements(rooster.id), measurements || []);
+      await setCache(cacheKeys.fights(rooster.id), fights || []);
+      applyChartData(measurements || [], fights || []);
     } catch (err) {
       console.error(err);
     }
@@ -199,7 +216,7 @@ export default function AnalyticsScreen() {
                   return (
                     <View key={r.id} style={styles.roosterRow}>
                       <View style={styles.roosterAvatarWrap}>
-                        <Text style={styles.roosterAvatar}>🐓</Text>
+                        <Ionicons name="egg-outline" size={18} color={T.sub} />
                       </View>
                       <View style={styles.roosterRowBody}>
                         <View style={styles.roosterRowTop}>
@@ -239,9 +256,16 @@ export default function AnalyticsScreen() {
                 <TouchableOpacity key={r.id} activeOpacity={0.7}
                   style={[styles.chip, selectedRooster?.id === r.id && styles.chipActive]}
                   onPress={() => setSelectedRooster(r)}>
-                  <Text style={[styles.chipText, selectedRooster?.id === r.id && styles.chipTextActive]}>
-                    🐓  {r.name}
-                  </Text>
+                  <View style={styles.chipRow}>
+                    <Ionicons
+                      name="egg-outline"
+                      size={12}
+                      color={selectedRooster?.id === r.id ? T.gold : T.sub}
+                    />
+                    <Text style={[styles.chipText, selectedRooster?.id === r.id && styles.chipTextActive]}>
+                      {r.name}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -266,9 +290,16 @@ export default function AnalyticsScreen() {
                 <TouchableOpacity key={r.id} activeOpacity={0.7}
                   style={[styles.chip, selectedRooster?.id === r.id && styles.chipActive]}
                   onPress={() => setSelectedRooster(r)}>
-                  <Text style={[styles.chipText, selectedRooster?.id === r.id && styles.chipTextActive]}>
-                    🐓  {r.name}
-                  </Text>
+                  <View style={styles.chipRow}>
+                    <Ionicons
+                      name="egg-outline"
+                      size={12}
+                      color={selectedRooster?.id === r.id ? T.gold : T.sub}
+                    />
+                    <Text style={[styles.chipText, selectedRooster?.id === r.id && styles.chipTextActive]}>
+                      {r.name}
+                    </Text>
+                  </View>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -571,6 +602,7 @@ const styles = StyleSheet.create({
   tabText:       { color: T.sub, fontWeight: '600', fontSize: 12, letterSpacing: 0.2 },
   tabTextActive: { color: '#0A0A0B', fontWeight: '800' },
 
+  chipRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   scroll:  { flex: 1 },
   content: { padding: 14 },
 

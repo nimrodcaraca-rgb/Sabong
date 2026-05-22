@@ -8,6 +8,10 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../hooks/useNotifications';
 import { COLORS } from '../constants/theme';
+import { useNetworkStatus } from '../hooks/useNetworkStatus';
+import { cacheKeys, getCache, setCache } from '../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../lib/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
 
 const T = {
   bg:      '#0E0E0F',
@@ -28,6 +32,7 @@ const T = {
 
 export default function ProfileScreen({ navigation }) {
   const { user, signOut } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const {
     scheduleDailyFeedingReminder,
     cancelAllNotifications,
@@ -53,6 +58,17 @@ export default function ProfileScreen({ navigation }) {
   const fetchProfile = async () => {
     if (!user) return;
     setLoading(true);
+    if (!isOnline) {
+      const cached = await getCache(cacheKeys.profile(user.id));
+      if (cached.data) {
+        setProfile(cached.data);
+        setFullName(cached.data.full_name || '');
+        setStableName(cached.data.stable_name || '');
+      }
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('profiles')
       .select('*')
@@ -63,6 +79,7 @@ export default function ProfileScreen({ navigation }) {
       setProfile(data);
       setFullName(data.full_name || '');
       setStableName(data.stable_name || '');
+      await setCache(cacheKeys.profile(user.id), data);
     }
     setLoading(false);
   };
@@ -73,18 +90,30 @@ export default function ProfileScreen({ navigation }) {
       return;
     }
     setSaving(true);
+    const updates = {
+      full_name: fullName.trim(),
+      stable_name: stableName.trim() || null,
+    };
+
+    if (!isOnline) {
+      await enqueueItem(createQueueItem('profile:update', { updates }));
+      await setCache(cacheKeys.profile(user.id), { ...profile, ...updates });
+      setProfile((prev) => ({ ...prev, ...updates }));
+      setSaving(false);
+      Alert.alert('Saved Offline', 'Profile will sync when online.');
+      return;
+    }
+
     const { error } = await supabase
       .from('profiles')
-      .update({
-        full_name: fullName.trim(),
-        stable_name: stableName.trim() || null,
-      })
+      .update(updates)
       .eq('id', user.id);
 
     setSaving(false);
     if (error) {
       Alert.alert('Error', error.message);
     } else {
+      await setCache(cacheKeys.profile(user.id), { ...profile, ...updates });
       Alert.alert('Saved', 'Profile updated successfully.');
     }
   };
@@ -287,7 +316,10 @@ export default function ProfileScreen({ navigation }) {
 
       {/* Built with */}
       <View style={styles.footer}>
-        <Text style={styles.footerText}>Built for sabongeros 🐓</Text>
+        <View style={styles.footerRow}>
+          <Ionicons name="egg-outline" size={14} color={T.gold} />
+          <Text style={styles.footerText}>Built for sabongeros</Text>
+        </View>
         <Text style={styles.footerSub}>Sabong Management System v1.0</Text>
       </View>
 
@@ -432,6 +464,7 @@ const styles = StyleSheet.create({
   actionArrow: { fontSize: 20, color: T.sub },
 
   footer: { alignItems: 'center', marginTop: 24, gap: 4 },
+  footerRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   footerText: { fontSize: 13, color: T.muted, fontWeight: '600' },
   footerSub: { fontSize: 11, color: T.muted },
 });

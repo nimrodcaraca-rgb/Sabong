@@ -287,7 +287,7 @@ Lethargy, Loss of appetite, Abnormal droppings, Respiratory issues, Swollen join
 - [ ] Export data as PDF or CSV
 - [ ] Multi-language support (Filipino / English)
 - [ ] Dark / light theme toggle
-- [ ] Offline mode with local sync
+- [x] Offline mode with local sync (basic cache + queued writes)
 - [ ] EAS Build for standalone APK with native Google sign-in modal
 - [ ] Supplement and vitamin schedule with reminders
 - [ ] Cloud backup and restore

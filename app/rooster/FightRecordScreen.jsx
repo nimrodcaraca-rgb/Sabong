@@ -6,9 +6,16 @@ import {
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { supabase } from '../../lib/supabase';
 import { COLORS } from '../../constants/theme';
+import { useAuth } from '../../context/AuthContext';
+import { useNetworkStatus } from '../../hooks/useNetworkStatus';
+import { cacheKeys, updateCachedItem, updateCacheArray } from '../../lib/offlineStore';
+import { createQueueItem, enqueueItem } from '../../lib/offlineQueue';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function FightRecordScreen({ route, navigation }) {
   const { roosterId } = route.params;
+  const { user } = useAuth();
+  const { isOnline } = useNetworkStatus();
   const [loading, setLoading] = useState(false);
   const [fightDate, setFightDate] = useState(new Date());
   const [showDate, setShowDate] = useState(false);
@@ -23,7 +30,7 @@ export default function FightRecordScreen({ route, navigation }) {
     if (!result) { Alert.alert('Required', 'Please select a result.'); return; }
     setLoading(true);
     try {
-      const { error } = await supabase.from('fight_records').insert({
+      const payload = {
         rooster_id: roosterId,
         fight_date: fightDate.toISOString().split('T')[0],
         venue: venue.trim() || null,
@@ -32,15 +39,40 @@ export default function FightRecordScreen({ route, navigation }) {
         result,
         duration_minutes: duration ? parseInt(duration) : null,
         notes: notes.trim() || null,
-      });
+      };
+
+      if (!isOnline) {
+        await enqueueItem(createQueueItem('fight:create', payload));
+        if (user) {
+          await updateCachedItem(
+            cacheKeys.roosters(user.id),
+            (r) => r.id === roosterId,
+            (r) => ({
+              ...r,
+              fight_records: [...(r.fight_records || []), { result }],
+            })
+          );
+        }
+        await updateCacheArray(cacheKeys.fights(roosterId), (items) => [...items, payload]);
+
+        Alert.alert('Saved Offline', 'Fight record will sync when online.', [
+          { text: 'OK', onPress: () => navigation.goBack() }
+        ]);
+        return;
+      }
+
+      const { error } = await supabase.from('fight_records').insert(payload);
       if (error) throw error;
-      Alert.alert('Saved! ⚔️', 'Fight record added.', [
+      await updateCacheArray(cacheKeys.fights(roosterId), (items) => [...items, payload]);
+
+      Alert.alert('Saved', 'Fight record added.', [
         { text: 'OK', onPress: () => navigation.goBack() }
       ]);
     } catch (err) {
       Alert.alert('Error', err.message);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -61,14 +93,17 @@ export default function FightRecordScreen({ route, navigation }) {
       <Text style={styles.sectionTitle}>RESULT</Text>
       <View style={styles.resultRow}>
         {[
-          { label: '🏆 WIN', value: 'Win', color: COLORS.gold },
-          { label: '💀 LOSS', value: 'Loss', color: COLORS.red },
-          { label: '🤝 DRAW', value: 'Draw', color: COLORS.textmuted },
-        ].map(({ label, value, color }) => (
+          { label: 'Win', value: 'Win', color: COLORS.gold, icon: 'trophy-outline' },
+          { label: 'Loss', value: 'Loss', color: COLORS.red, icon: 'skull-outline' },
+          { label: 'Draw', value: 'Draw', color: COLORS.textmuted, icon: 'remove-outline' },
+        ].map(({ label, value, color, icon }) => (
           <TouchableOpacity key={value}
             style={[styles.resultBtn, result === value && { borderColor: color, backgroundColor: `${color}22` }]}
             onPress={() => setResult(value)}>
-            <Text style={[styles.resultBtnText, result === value && { color }]}>{label}</Text>
+            <View style={styles.resultRowContent}>
+              <Ionicons name={icon} size={14} color={result === value ? color : COLORS.textlight} />
+              <Text style={[styles.resultBtnText, result === value && { color }]}>{label}</Text>
+            </View>
           </TouchableOpacity>
         ))}
       </View>
@@ -102,7 +137,7 @@ export default function FightRecordScreen({ route, navigation }) {
       <TouchableOpacity style={[styles.saveBtn, loading && { opacity: 0.6 }]}
         onPress={handleSave} disabled={loading}>
         {loading ? <ActivityIndicator color={COLORS.black} />
-          : <Text style={styles.saveBtnText}>SAVE FIGHT RECORD ⚔️</Text>}
+          : <Text style={styles.saveBtnText}>SAVE FIGHT RECORD</Text>}
       </TouchableOpacity>
       <View style={{ height: 40 }} />
     </ScrollView>
@@ -130,6 +165,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.darkgray, alignItems: 'center',
     borderWidth: 1, borderColor: COLORS.border,
   },
+  resultRowContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   resultBtnText: { color: COLORS.textlight, fontWeight: '800', fontSize: 13 },
   saveBtn: {
     backgroundColor: COLORS.gold, borderRadius: 12,

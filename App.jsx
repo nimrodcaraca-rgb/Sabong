@@ -8,14 +8,19 @@ import AppNavigator from './navigation/AppNavigator';
 import AuthNavigator from './navigation/AuthNavigator';
 import { useNotifications } from './hooks/useNotifications';
 import { COLORS } from './constants/theme';
+import OfflineBanner from './components/OfflineBanner';
+import { useOfflineSync } from './hooks/useOfflineSync';
+import Constants from 'expo-constants';
 
 function RootNavigator() {
   const { user, loading } = useAuth();
   const { registerForPushNotifications } = useNotifications();
+  const { isOnline, syncing, pendingCount } = useOfflineSync(user);
+  const isExpoGo = Constants.appOwnership === 'expo';
 
   useEffect(() => {
-    if (user) registerForPushNotifications();
-  }, [user]);
+    if (user && !isExpoGo) registerForPushNotifications();
+  }, [user, isExpoGo]);
 
   if (loading) {
     return (
@@ -30,7 +35,16 @@ function RootNavigator() {
     );
   }
 
-  return user ? <AppNavigator /> : <AuthNavigator />;
+  return (
+    <>
+      <OfflineBanner
+        isOnline={isOnline}
+        syncing={syncing}
+        pendingCount={pendingCount}
+      />
+      {user ? <AppNavigator /> : <AuthNavigator />}
+    </>
+  );
 }
 
 export default function App() {
