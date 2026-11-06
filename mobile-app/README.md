@@ -137,7 +137,7 @@
 ## Project Structure
 
 ```
-Sabong/
+Sabong/mobile-app/
 ├── app/
 │   ├── (auth)/
 │   │   ├── LoginScreen.jsx         # Email + Google login
@@ -237,6 +237,7 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 # Clone the repository
 git clone https://github.com/yourusername/sabong.git
 cd sabong
+cd mobile-app
 
 # Install dependencies
 npm install
